@@ -29,7 +29,7 @@ class BasicUserManager:
             if self.last_game is not None:
                 resp = self.get_latest_games_function(self.user_id)
                 if resp != {}:
-                    total_played = next(filter(lambda x: x["appid"] == self.last_game, json.loads(resp.text)["response"]["games"]))["playtime_forever"] / 60
+                    total_played = next(filter(lambda x: x["appid"] == self.last_game, resp))["playtime_forever"] / 60
 
                     result_data = [{
                         "tracked_user": self.user_id,
@@ -174,7 +174,6 @@ class DataManager:
             users_range = ",".join([str(i) for i in self.master.basic_user_ids[start:end]])
             new_url = f"http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={self.master.steam_key}&steamids={users_range}"
             urls.append(new_url)
-
         with FuturesSession() as session:
             futures = [session.get(url) for url in urls]
             for future in as_completed(futures):

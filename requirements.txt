@@ -1,4 +1,5 @@
 requests
+requests-futures
 psycopg2-binary
 pyTelegramBotAPI
 beautifulsoup4
