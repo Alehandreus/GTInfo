@@ -1,6 +1,7 @@
 import telebot
 import datetime as dt
 import requests
+import threading
 from bs4 import BeautifulSoup
 
 
@@ -42,6 +43,18 @@ class TelegramNotifier:
         self.token = token
         self.chat_ids = chat_ids
         self.bot = telebot.AsyncTeleBot(token)
+        self.define_bot_actions()
+        polling_thread = threading.Thread(target=self.bot_polling)
+        polling_thread.start()
+
+    def define_bot_actions(self):
+        @self.bot.message_handler(commands=['start'])
+        def command_start(message):
+            self.bot.reply_to(message, "Hi! This bot will help you to get playtime info about required steam profiles.")
+
+    def bot_polling(self):
+        print("Started telegram bot instance")
+        self.bot.polling()
 
     def notify(self, data):
         s = f"" \
