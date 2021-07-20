@@ -43,14 +43,30 @@ class TelegramNotifier:
         self.token = token
         self.chat_ids = chat_ids
         self.bot = telebot.AsyncTeleBot(token)
+        self.db_manager = None
         self.define_bot_actions()
         polling_thread = threading.Thread(target=self.bot_polling)
         polling_thread.start()
+
+    def set_current_db(self, current_db):
+        self.db_manager = current_db
 
     def define_bot_actions(self):
         @self.bot.message_handler(commands=['start'])
         def command_start(message):
             self.bot.reply_to(message, "Hi! This bot will help you to get playtime info about required steam profiles.")
+
+        @self.bot.message_handler(commands=['ignore'])
+        def command_ignore(message):
+            if len(message.text.split()) == 2:
+                try:
+                    data = {"chat_id": message.chat.id, "steam_id": int(message.text.split(" ")[1])}
+                    self.bot.reply_to(message, "Ok! Now ignoring that player.")
+                    self.db_manager.add_ignore_entry(data)
+                except ValueError:
+                    self.bot.reply_to(message, "Incorrect format. Try /ignore <steam_id>")
+            else:
+                self.bot.reply_to(message, "Incorrect usage. Try /ignore <steam_id>")
 
     def bot_polling(self):
         print("Started telegram bot instance")
@@ -61,8 +77,13 @@ class TelegramNotifier:
             f"{get_username(data['tracked_user'])} was playing " \
             f"{get_appname(data['game_id'])} " \
             f"({f(data['started_playing_timestamp'])} — {f(data['ended_playing_timestamp'])})"
-        self.send_text(s)
+        self.send_text(s, data['tracked_user'])
 
-    def send_text(self, text):
+    def send_text(self, text, user_id):
+        arr = []
+        for el in self.db_manager.get_ignore_chat_ids_by_steam_id({"steam_id": user_id}):
+            arr.append(el[0])
+        print(arr)
         for chat_id in self.chat_ids:
-            self.bot.send_message(chat_id, text, parse_mode='Markdown')
+            if chat_id not in arr:
+                self.bot.send_message(chat_id, text, parse_mode='Markdown')

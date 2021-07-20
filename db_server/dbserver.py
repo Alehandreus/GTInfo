@@ -13,6 +13,7 @@ class DBServer:
         self.users_changed = True
         self.DOER_ADDRESS = doer_address
         self.telegram_notifier = telegram_notifier
+        self.telegram_notifier.set_current_db(self.db_manager)
 
         # updating users is not implemented
         # self.set_users()
