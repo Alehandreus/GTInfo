@@ -3,6 +3,7 @@ from requests_futures.sessions import FuturesSession
 import requests
 import json
 import datetime as dt
+import traceback
 
 
 # one manager for each user
@@ -29,7 +30,7 @@ class BasicUserManager:
             if self.last_game is not None:
                 resp = self.get_latest_games_function(self.user_id)
                 if resp != {}:
-                    total_played = next(filter(lambda x: x["appid"] == self.last_game, resp))["playtime_forever"] / 60
+                    total_played = resp["appid"] / 3600
 
                     result_data = [{
                         "tracked_user": self.user_id,
@@ -49,7 +50,7 @@ class BasicUserManager:
 class PremiumUserManager:
     def __init__(self, userid, all_playtimes):
         self.user_id = userid
-        self.last_known_playtimes = {game["appid"]: game["playtime_forever"] * 60 for game in all_playtimes}
+        self.last_known_playtimes = all_playtimes
         self.sessions_start_playtimes = {}  # { app_id: [start_playtime, last_check_timestamp], }
 
     def analyze_data(self, data, current_timestamp=0):
@@ -129,9 +130,12 @@ class DataManager:
             return {}
 
         try:
-            return json.loads(resp.text)["response"]["games"]
-        except Exception as ex:
-            print(ex)
+            resp = json.loads(resp.text)["response"]
+            if resp["total_count"] != 0:
+                res = {game["appid"]: game["playtime_forever"] * 60 for game in resp["games"]}
+                return res
+        except KeyError:
+            traceback.print_exc()
         return {}
 
     def get_all_playtimes(self, user_id):
@@ -139,13 +143,15 @@ class DataManager:
         resp = requests.get(url)
 
         if resp.status_code != 200:
-            print(f"Request failed. Status code: {resp.status_code}")
             return {}
 
         try:
-            return json.loads(resp.text)["response"]["games"]
-        except Exception as ex:
-            print(ex)
+            resp = json.loads(resp.text)["response"]
+            if resp["game_count"] != 0:
+                res = {game["appid"]: game["playtime_forever"] * 60 for game in resp["games"]}
+                return res | self.get_recent_playtimes(user_id)
+        except KeyError:
+            traceback.print_exc()
         return {}
 
     # delete old user managers, create new
