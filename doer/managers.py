@@ -206,7 +206,7 @@ class DataManager:
                 except json.decoder.JSONDecodeError as ex:  # probably request futures messed up
                     continue
 
-                if not ("total_count" in response.keys()):  # check if response is not empty
+                if not ("games" in response.keys()):  # check if response is not empty
                     continue  # response is empty, steam bug perhaps
 
                 # finally

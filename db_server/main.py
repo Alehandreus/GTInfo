@@ -6,9 +6,10 @@ DOER_ADDRESS = ('localhost', 8686)
 database_values = ("postgres", "postgres", "localhost", "5432", "gtinfo")
 
 telegram_notifier = TelegramNotifier(
-    "",
+    "token",
     [
-
+        chatid1,  # int
+        chatid2
     ]
 )
 

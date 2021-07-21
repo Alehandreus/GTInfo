@@ -5,6 +5,7 @@ from time import sleep
 from dataclasses import dataclass
 from binary_functions import *
 from managers import DataManager
+import threading
 
 
 @dataclass
@@ -28,7 +29,7 @@ class Settings:
 class Doer:
     def __init__(self, db_server_address, steam_key):
         self.is_set_up = False
-        self.db_operational = False
+        self.db_operational = True  # db is anyway checked during setup
         self.db_server_address = db_server_address
         self.steam_key = steam_key
         self.settings = Settings(5, 5, 5)
@@ -36,15 +37,20 @@ class Doer:
         self.premium_user_ids = []
         self.data_manager = DataManager(self)
         self.last_runs = LastRunTimestamps(0, 0, 0)
+        self.is_working = True
 
     # returns socket if db server operational, else False
     def try_to_connect(self):
         sock = socket.socket()
         try:
             sock.connect(self.db_server_address)
+            if not self.db_operational:
+                print(f"DB is operational since {dt.datetime.utcnow()} utc")
             self.db_operational = True
             return sock
         except ConnectionRefusedError:
+            if self.db_operational:
+                print(f"DB is not operational since {dt.datetime.utcnow()} utc")
             self.db_operational = False
             return False
 
@@ -64,7 +70,6 @@ class Doer:
     def check_updates(self):
         sock = self.try_to_connect()
         if not sock:
-            print("DB is not operational")
             return
 
         # if first time
@@ -107,7 +112,6 @@ class Doer:
     def send_data(self, data):
         sock = self.try_to_connect()
         if not sock:
-            print("DB is not operational")
             return
 
         req = {"command": "new_user_online_activity_objects", "user_online_activity_objects": data}
@@ -135,7 +139,7 @@ class Doer:
     def check_premium_users(self):
         if not self.is_set_up:
             return
-        time_1 = dt.datetime.now()
+        time_1 = dt.datetime.utcnow()
 
         if self.db_operational:
             new_data = self.data_manager.check_premium_users()
@@ -143,13 +147,22 @@ class Doer:
                 print(new_data)
                 self.send_data(new_data)
 
-        time_delta = (dt.datetime.now() - time_1).seconds
+        time_delta = (dt.datetime.utcnow() - time_1).seconds
         if time_delta > self.settings.premium_freq:
             print(f"WARNING! It takes too long! ({time_delta}s > {self.settings.premium_freq}s)")
 
     def start(self):
-        print("Doer operational")
-        while True:
+        print("Doer starting...")
+        data_collection = threading.Thread(target=self.start_data_collection)
+        data_collection.start()
+        console = threading.Thread(target=self.start_console)
+        console.start()
+        data_collection.join()
+        console.join()
+
+    def start_data_collection(self):
+        print("Data collection active")
+        while self.is_working:
             current_timestamp = dt.datetime.utcnow().timestamp()
             if self.last_runs.update + self.settings.update_freq <= current_timestamp:
                 self.last_runs.update = current_timestamp
@@ -161,3 +174,11 @@ class Doer:
                 self.last_runs.premium = current_timestamp
                 self.check_premium_users()
             sleep(1)
+
+    def start_console(self):
+        print("Console active. Type \"stop\" to stop")
+        while self.is_working:
+            command = input()
+            if command == "stop":
+                print("Stopping execution...")
+                self.is_working = False
