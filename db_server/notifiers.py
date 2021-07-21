@@ -68,6 +68,18 @@ class TelegramNotifier:
             else:
                 self.bot.reply_to(message, "Incorrect usage. Try /ignore <steam_id>")
 
+        @self.bot.message_handler(commands=['unignore'])
+        def command_unignore(message):
+            if len(message.text.split()) == 2:
+                try:
+                    data = {"chat_id": message.chat.id, "steam_id": int(message.text.split(" ")[1])}
+                    self.bot.reply_to(message, "Ok! Now stopped ignoring that player.")
+                    self.db_manager.remove_ignore_entry(data)
+                except ValueError:
+                    self.bot.reply_to(message, "Incorrect format. Try /unignore <steam_id>")
+            else:
+                self.bot.reply_to(message, "Incorrect usage. Try /unignore <steam_id>")
+
     def bot_polling(self):
         print("Started telegram bot instance")
         self.bot.polling()
@@ -83,7 +95,6 @@ class TelegramNotifier:
         arr = []
         for el in self.db_manager.get_ignore_chat_ids_by_steam_id({"steam_id": user_id}):
             arr.append(el[0])
-        print(arr)
         for chat_id in self.chat_ids:
             if chat_id not in arr:
                 self.bot.send_message(chat_id, text, parse_mode='Markdown')

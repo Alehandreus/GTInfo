@@ -51,7 +51,25 @@ class SqliteManager:
 
     @with_sqlite3_cursor
     def add_ignore_entry(self, data, cursor):
-        cursor.execute(f"INSERT INTO `telegram_bot_ignore_table` VALUES ({data['chat_id']}, {data['steam_id']})")
+        cursor.execute(f"SELECT * FROM `telegram_bot_ignore_table` WHERE chat_id = {data['chat_id']} and steam_id = {data['steam_id']} LIMIT 1")
+        if cursor.fetchone() is None:
+            cursor.execute(f"INSERT INTO `telegram_bot_ignore_table` VALUES ({data['chat_id']}, {data['steam_id']})")
+
+    @with_sqlite3_cursor
+    def get_ignore_steam_ids_by_chat_id(self, data, cursor):
+        cursor.execute(f"SELECT steam_id FROM `telegram_bot_ignore_table` WHERE chat_id = {data['chat_id']}")
+        return cursor.fetchall()
+
+    @with_sqlite3_cursor
+    def get_ignore_chat_ids_by_steam_id(self, data, cursor):
+        cursor.execute(f"SELECT chat_id FROM `telegram_bot_ignore_table` WHERE steam_id = {data['steam_id']}")
+        return cursor.fetchall()
+
+    @with_sqlite3_cursor
+    def remove_ignore_entry(self, data, cursor):
+        cursor.execute(f"SELECT * FROM `telegram_bot_ignore_table` WHERE chat_id = {data['chat_id']} and steam_id = {data['steam_id']} LIMIT 1")
+        if cursor.fetchone() is not None:
+            cursor.execute(f"DELETE FROM `telegram_bot_ignore_table` WHERE chat_id = {data['chat_id']} and steam_id = {data['steam_id']}")
 
 
 class PostgreSQLManager:
@@ -87,3 +105,9 @@ class PostgreSQLManager:
     def get_ignore_chat_ids_by_steam_id(self, data, cursor):
         cursor.execute(f"SELECT chat_id FROM telegram_bot_ignore_table WHERE steam_id = {data['steam_id']};")
         return cursor.fetchall()
+
+    @with_postgre_cursor
+    def remove_ignore_entry(self, data, cursor):
+        cursor.execute(f"SELECT * FROM telegram_bot_ignore_table WHERE chat_id = {data['chat_id']} and steam_id = {data['steam_id']} LIMIT 1;")
+        if cursor.fetchone() is not None:
+            cursor.execute(f"DELETE FROM telegram_bot_ignore_table WHERE chat_id = {data['chat_id']} and steam_id = {data['steam_id']};")
