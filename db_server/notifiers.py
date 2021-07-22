@@ -1,41 +1,13 @@
 import telebot
 import datetime as dt
 import requests
-import threading
 from bs4 import BeautifulSoup
+import json
 
 
 # add 3 hours to date
 def f(x):
     return dt.datetime.strftime(dt.datetime.fromtimestamp(x) + dt.timedelta(hours=3), format="%H:%M")
-
-
-def get_username(steamid):
-    url = "https://steamcommunity.com/profiles/" + str(steamid)
-    getresponse = requests.get(url)
-    if getresponse.status_code != 200:
-        return None
-    soup = BeautifulSoup(getresponse.content, 'html.parser')
-    a = soup.find("span", class_="actual_persona_name")
-    if a is None:
-        return None
-    username = a.text
-    return username
-
-
-def get_appname(gameid):
-    if gameid == 480:
-        return "Spacewar"  # wut
-    url = "https://store.steampowered.com/app/" + str(gameid)
-    getresponse = requests.get(url)
-    if getresponse.status_code != 200:
-        return None
-    soup = BeautifulSoup(getresponse.content, 'html.parser')
-    a = soup.find("div", class_="apphub_AppName")
-    if a is None:
-        return None
-    game_name = a.text
-    return game_name
 
 
 class TelegramNotifier:
@@ -44,6 +16,7 @@ class TelegramNotifier:
         self.chat_ids = chat_ids
         self.bot = telebot.AsyncTeleBot(token)
         self.db_manager = None
+        self.name_finder = NameFinder()
         self.define_bot_actions()
 
     def set_current_db(self, current_db):
@@ -85,8 +58,8 @@ class TelegramNotifier:
 
     def notify(self, data):
         s = f"" \
-            f"{get_username(data['tracked_user'])} was playing " \
-            f"{get_appname(data['game_id'])} " \
+            f"{self.name_finder.get_username(data['tracked_user'])} was playing " \
+            f"{self.name_finder.get_appname(data['game_id'])} " \
             f"({f(data['started_playing_timestamp'])} — {f(data['ended_playing_timestamp'])})"
         self.send_text(s, data['tracked_user'])
 
@@ -97,3 +70,61 @@ class TelegramNotifier:
         for chat_id in self.chat_ids:
             if chat_id not in arr:
                 self.bot.send_message(chat_id, text, parse_mode='Markdown')
+
+
+class NameFinder:
+    def __init__(self):
+        self.all_appnames = None
+
+    @staticmethod
+    def get_all_appnames():
+        try:
+            resp = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/")
+            print(resp.text)
+            resp = json.loads(resp.text)
+            return {game["appid"]: game["name"] for game in resp["applist"]["apps"]}
+        except Exception as e:
+            print(f"Failed to get all appnames list: {e}")
+        return None
+
+    def get_appname(self, appid):
+        appname = self.parse_appname(appid)
+        if appname is not None:
+            return appname
+
+        if dt.datetime.utcnow().hour == 0 or self.all_appnames is None:
+            new_all_appnames = self.get_all_appnames()
+            if new_all_appnames is not None:
+                self.all_appnames = new_all_appnames
+
+        if self.all_appnames is None:
+            return "Unknown game"
+
+        print(self.all_appnames)
+        return self.all_appnames.get(appid, "Unknown game")
+
+    @staticmethod
+    def parse_appname(gameid):
+        url = "https://store.steampowered.com/app/" + str(gameid)
+        getresponse = requests.get(url)
+        if getresponse.status_code != 200:
+            return None
+        soup = BeautifulSoup(getresponse.content, 'html.parser')
+        a = soup.find("div", class_="apphub_AppName")
+        if a is None:
+            return None
+        game_name = a.text
+        return game_name
+
+    @staticmethod
+    def get_username(steamid):
+        url = "https://steamcommunity.com/profiles/" + str(steamid)
+        getresponse = requests.get(url)
+        if getresponse.status_code != 200:
+            return None
+        soup = BeautifulSoup(getresponse.content, 'html.parser')
+        a = soup.find("span", class_="actual_persona_name")
+        if a is None:
+            return None
+        username = a.text
+        return username
