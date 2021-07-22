@@ -80,7 +80,6 @@ class NameFinder:
     def get_all_appnames():
         try:
             resp = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/")
-            print(resp.text)
             resp = json.loads(resp.text)
             return {game["appid"]: game["name"] for game in resp["applist"]["apps"]}
         except Exception as e:
@@ -98,10 +97,9 @@ class NameFinder:
                 self.all_appnames = new_all_appnames
 
         if self.all_appnames is None:
-            return "Unknown game"
+            return "unknown game"
 
-        print(self.all_appnames)
-        return self.all_appnames.get(appid, "Unknown game")
+        return self.all_appnames.get(appid, "unknown game")
 
     @staticmethod
     def parse_appname(gameid):
