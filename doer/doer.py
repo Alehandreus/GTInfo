@@ -37,6 +37,7 @@ class Doer:
         self.premium_user_ids = []
         self.data_manager = DataManager(self)
         self.last_runs = LastRunTimestamps(0, 0, 0)
+
         self.is_working = True
 
     # returns socket if db server operational, else False
@@ -72,41 +73,46 @@ class Doer:
         if not sock:
             return
 
-        # if first time
-        if not self.is_set_up:
-            # setting up
-            req_str = json.dumps({"command": "full_settings"})
-            send_msg(sock, req_str)
-            response = json.loads(recv_msg(sock))
-            self.apply_settings(response["data"])
-            sock.close()
+        try:
 
-            sock = socket.socket()
-            sock.connect(self.db_server_address)
-            req_str = json.dumps({"command": "full_users"})
-            send_msg(sock, req_str)
-            response = json.loads(recv_msg(sock))
-            self.apply_users(response["data"]["basic_user_ids"], response["data"]["premium_user_ids"])
-            sock.close()
+            # if first time
+            if not self.is_set_up:
+                # setting up
+                req_str = json.dumps({"command": "full_settings"})
+                send_msg(sock, req_str)
+                response = json.loads(recv_msg(sock))
+                self.apply_settings(response["data"])
+                sock.close()
 
-            self.is_set_up = True
-        else:
-            # updating settings
-            req_str = json.dumps({"command": "full_settings"})
-            send_msg(sock, req_str)
-            response = json.loads(recv_msg(sock))
-            self.apply_settings(response["data"])
-            sock.close()
-
-            # updating users
-            sock = socket.socket()
-            sock.connect(self.db_server_address)
-            req_str = json.dumps({"command": "users_if_changed"})
-            send_msg(sock, req_str)
-            response = json.loads(recv_msg(sock))
-            sock.close()
-            if response["changed"]:
+                sock = socket.socket()
+                sock.connect(self.db_server_address)
+                req_str = json.dumps({"command": "full_users"})
+                send_msg(sock, req_str)
+                response = json.loads(recv_msg(sock))
                 self.apply_users(response["data"]["basic_user_ids"], response["data"]["premium_user_ids"])
+                sock.close()
+
+                self.is_set_up = True
+            else:
+                # updating settings
+                req_str = json.dumps({"command": "full_settings"})
+                send_msg(sock, req_str)
+                response = json.loads(recv_msg(sock))
+                self.apply_settings(response["data"])
+                sock.close()
+
+                # updating users
+                sock = socket.socket()
+                sock.connect(self.db_server_address)
+                req_str = json.dumps({"command": "users_if_changed"})
+                send_msg(sock, req_str)
+                response = json.loads(recv_msg(sock))
+                sock.close()
+                if response["changed"]:
+                    self.apply_users(response["data"]["basic_user_ids"], response["data"]["premium_user_ids"])
+
+        except socket.error as e:
+            print(f"Socket error occurred: {e}")
 
     # send user activity objects to db server
     def send_data(self, data):
@@ -155,8 +161,10 @@ class Doer:
         print("Doer starting...")
         data_collection = threading.Thread(target=self.start_data_collection)
         data_collection.start()
+
         console = threading.Thread(target=self.start_console)
         console.start()
+
         data_collection.join()
         console.join()
 

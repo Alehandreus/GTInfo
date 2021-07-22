@@ -3,6 +3,7 @@ import json
 import requests
 from binary_functions import *
 from db_managers import PostgreSQLManager
+import threading
 
 
 class DBServer:
@@ -15,18 +16,36 @@ class DBServer:
         self.telegram_notifier = telegram_notifier
         self.telegram_notifier.set_current_db(self.db_manager)
 
+        self.is_working = True
+
         # updating users is not implemented
         # self.set_users()
 
     def start(self):
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind(self.DOER_ADDRESS)
-        server_socket.listen()
+        print("Doer starting...")
 
-        print('server is running, please, press ctrl+c to stop')
-        while True:
+        socket_thread = threading.Thread(target=self.start_socket)
+        socket_thread.start()
+
+        console = threading.Thread(target=self.start_console)
+        console.start()
+
+        telegram_notifier_thread = threading.Thread(target=self.start_telegram_notifier)
+        telegram_notifier_thread.start()
+
+        socket_thread.join()
+        console.join()
+        telegram_notifier_thread.join()
+
+    def start_socket(self):
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.bind(self.DOER_ADDRESS)
+        self.server_socket.listen()
+
+        print('Socket active')
+        while self.is_working:
             try:
-                connection, address = server_socket.accept()
+                connection, address = self.server_socket.accept()
                 data = json.loads(recv_msg(connection))
                 resp_dict = do_smth_with_request_dict.get(data["command"], lambda a, b: {})(self, data)
                 resp_str = json.dumps(resp_dict)
@@ -34,6 +53,26 @@ class DBServer:
                 connection.close()
             except Exception as ex:
                 print(ex)
+        print("Socket stopped")
+
+    def stop_socket(self):
+        tempsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tempsocket.connect(("localhost", 8686))
+        send_msg(tempsocket, json.dumps({"command": "nocommand"}))
+        self.server_socket.close()
+
+    def start_telegram_notifier(self):
+        self.telegram_notifier.bot_polling()
+
+    def start_console(self):
+        print("Console active. Type \"stop\" to stop")
+        while self.is_working:
+            command = input()
+            if command == "stop":
+                print("Stopping execution...")
+                self.is_working = False
+                self.telegram_notifier.bot.stop_polling()
+                self.stop_socket()
 
     def set_users(self):
         resp = requests.get("http://127.0.0.1:8000/iu_api/tracked_user_object/?format=json", auth=requests.auth.HTTPBasicAuth('admin', 'rockpassword'))

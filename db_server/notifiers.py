@@ -45,8 +45,6 @@ class TelegramNotifier:
         self.bot = telebot.AsyncTeleBot(token)
         self.db_manager = None
         self.define_bot_actions()
-        polling_thread = threading.Thread(target=self.bot_polling)
-        polling_thread.start()
 
     def set_current_db(self, current_db):
         self.db_manager = current_db
@@ -83,6 +81,7 @@ class TelegramNotifier:
     def bot_polling(self):
         print("Started telegram bot instance")
         self.bot.polling()
+        print("Telegram bot polling stopped")
 
     def notify(self, data):
         s = f"" \
