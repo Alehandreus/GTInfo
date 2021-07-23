@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from binary_functions import *
 from managers import DataManager
 import threading
+from enum import Enum, auto
+
+
+class UserTiers(Enum):
+    basic = auto()
+    premium = auto()
 
 
 @dataclass
@@ -22,19 +28,19 @@ class Settings:
     update_freq: int
 
 
-# decorator to check execution time
+# decorator to check execution time (for users check only)
 def time_check(f):
-    name_to_param = {"check_basic_users": "basic_freq", "check_premium_users": "premium_freq"}
-
-    def wrapper(*args, **kwargs):
-        obj = args[0]
-        time_limit = obj.settings.__dict__[name_to_param[f.__name__]]
-
+    def wrapper(self, users_tier):
+        time_limit = 0
+        if users_tier == UserTiers.basic:
+            time_limit = self.settings.basic_freq
+        elif users_tier == UserTiers.premium:
+            time_limit = self.settings.premium_freq
         start_time = dt.datetime.utcnow()
-        res = f(*args, **kwargs)
+        res = f(self, users_tier)
         time_delta = (dt.datetime.utcnow() - start_time).seconds
         if time_delta > time_limit:
-            print(f"WARNING! {f.__name__} takes too long ({time_delta}s > {time_limit}s)")
+            print(f"WARNING! {users_tier.name} checking takes too long ({time_delta}s > {time_limit}s)")
         return res
     return wrapper
 
@@ -54,6 +60,7 @@ class Doer:
         self.premium_user_ids = []
         self.data_manager = DataManager(self)
         self.last_runs = LastRunTimestamps(0, 0, 0)
+        self.data_to_send = []
 
         self.is_working = True
 
@@ -131,40 +138,33 @@ class Doer:
         except socket.error as e:
             print(f"Socket error occurred: {e}")
 
-    # send user activity objects to db server
-    def send_data(self, data):
+    # send user activity objects to db server if there any
+    def send_data_to_send(self):
+        if not self.data_to_send:
+            return
+
         sock = self.try_to_connect()
         if not sock:
             return
 
-        req = {"command": "new_user_online_activity_objects", "user_online_activity_objects": data}
+        req = {"command": "new_user_online_activity_objects", "user_online_activity_objects": self.data_to_send}
         req_str = json.dumps(req)
         send_msg(sock, req_str)
+        self.data_to_send = []
         sock.close()
 
-    # ask data manager for basic users and send data to db server
+    # ask data manager for users and send data to db server
     @time_check
-    def check_basic_users(self):
+    def check_users(self, users_tier):
         if not self.is_set_up:
             return
 
-        if self.db_operational:
-            new_data = self.data_manager.check_basic_users()
-            if new_data:
-                print(new_data)
-                self.send_data(new_data)
+        if users_tier == UserTiers.basic:
+            self.data_to_send += self.data_manager.check_basic_users()
+        elif users_tier == UserTiers.premium:
+            self.data_to_send += self.data_manager.check_premium_users()
 
-    # ask data manager for premium users and send data to db server
-    @time_check
-    def check_premium_users(self):
-        if not self.is_set_up:
-            return
-
-        if self.db_operational:
-            new_data = self.data_manager.check_premium_users()
-            if new_data:
-                print(new_data)
-                self.send_data(new_data)
+        self.send_data_to_send()
 
     def start(self):
         print("Doer starting...")
@@ -190,10 +190,10 @@ class Doer:
                 self.check_updates()
             if self.last_runs.basic + self.settings.basic_freq <= current_timestamp:
                 self.last_runs.basic = current_timestamp
-                self.check_basic_users()
+                self.check_users(UserTiers.basic)
             if self.last_runs.premium + self.settings.premium_freq <= current_timestamp:
                 self.last_runs.premium = current_timestamp
-                self.check_premium_users()
+                self.check_users(UserTiers.premium)
             sleep(1)
         print("Data collection stopped")
 
