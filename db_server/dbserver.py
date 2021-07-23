@@ -22,7 +22,7 @@ class DBServer:
         # self.set_users()
 
     def start(self):
-        print("Doer starting...")
+        print("DB server starting...")
 
         socket_thread = threading.Thread(target=self.start_socket)
         socket_thread.start()

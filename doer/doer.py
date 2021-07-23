@@ -22,6 +22,23 @@ class Settings:
     update_freq: int
 
 
+# decorator to check execution time
+def time_check(f):
+    name_to_param = {"check_basic_users": "basic_freq", "check_premium_users": "premium_freq"}
+
+    def wrapper(*args, **kwargs):
+        obj = args[0]
+        time_limit = obj.settings.__dict__[name_to_param[f.__name__]]
+
+        start_time = dt.datetime.utcnow()
+        res = f(*args, **kwargs)
+        time_delta = (dt.datetime.utcnow() - start_time).seconds
+        if time_delta > time_limit:
+            print(f"WARNING! {f.__name__} takes too long ({time_delta}s > {time_limit}s)")
+        return res
+    return wrapper
+
+
 # Doer interacts with db server:
 #   settings updates
 #   user lists updates
@@ -126,10 +143,10 @@ class Doer:
         sock.close()
 
     # ask data manager for basic users and send data to db server
+    @time_check
     def check_basic_users(self):
         if not self.is_set_up:
             return
-        time_1 = dt.datetime.now()
 
         if self.db_operational:
             new_data = self.data_manager.check_basic_users()
@@ -137,25 +154,17 @@ class Doer:
                 print(new_data)
                 self.send_data(new_data)
 
-        time_delta = (dt.datetime.now() - time_1).seconds
-        if time_delta > self.settings.basic_freq:
-            print(f"WARNING! It takes too long! ({time_delta}s > {self.settings.basic_freq}s)")
-
     # ask data manager for premium users and send data to db server
+    @time_check
     def check_premium_users(self):
         if not self.is_set_up:
             return
-        time_1 = dt.datetime.utcnow()
 
         if self.db_operational:
             new_data = self.data_manager.check_premium_users()
             if new_data:
                 print(new_data)
                 self.send_data(new_data)
-
-        time_delta = (dt.datetime.utcnow() - time_1).seconds
-        if time_delta > self.settings.premium_freq:
-            print(f"WARNING! It takes too long! ({time_delta}s > {self.settings.premium_freq}s)")
 
     def start(self):
         print("Doer starting...")
@@ -167,6 +176,10 @@ class Doer:
 
         data_collection.join()
         console.join()
+
+    def stop(self):
+        print("Stopping execution...")
+        self.is_working = False
 
     def start_data_collection(self):
         print("Data collection active")
@@ -182,11 +195,12 @@ class Doer:
                 self.last_runs.premium = current_timestamp
                 self.check_premium_users()
             sleep(1)
+        print("Data collection stopped")
 
     def start_console(self):
         print("Console active. Type \"stop\" to stop")
         while self.is_working:
             command = input()
             if command == "stop":
-                print("Stopping execution...")
-                self.is_working = False
+                self.stop()
+        print("Console stopped")

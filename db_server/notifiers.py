@@ -91,15 +91,20 @@ class NameFinder:
         if appname is not None:
             return appname
 
-        if dt.datetime.utcnow().hour == 0 or self.all_appnames is None:
+        current_timestamp = dt.datetime.utcnow().timestamp()
+        if self.last_update is None or \
+                self.all_appnames is None or \
+                current_timestamp - self.last_update >= 86400:  # update every 24 hours
+
             new_all_appnames = self.get_all_appnames()
             if new_all_appnames is not None:
                 self.all_appnames = new_all_appnames
+                self.last_update = current_timestamp
 
         if self.all_appnames is None:
-            return "unknown game"
+            return f"unknown game {appid}"
 
-        return self.all_appnames.get(appid, "unknown game")
+        return self.all_appnames.get(appid, f"unknown game {appid}")
 
     @staticmethod
     def parse_appname(gameid):
