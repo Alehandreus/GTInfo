@@ -65,8 +65,8 @@ class PremiumUserManager:
             if last_playtime != current_playtime:  # if playtime changed
                 playtime_diff = (current_playtime - last_playtime)
 
-                #   session end guarantee      steam bug, lets interpret as session end
-                if (playtime_diff < 1800) or (playtime_diff > 1800 and last_playtime != 0):
+                # session end guarantee
+                if playtime_diff < 1800:
                     if app_id in self.sessions_start_playtimes.keys():
                         session_playtime_diff = current_playtime - self.sessions_start_playtimes.pop(app_id)[0]
                         start_timestamp = current_timestamp - session_playtime_diff
@@ -81,8 +81,8 @@ class PremiumUserManager:
                     }
                     result_data.append(mini_data)
 
-                # regular steam update
-                elif playtime_diff == 1800:
+                #      regular steam update      steam bug, lets interpret as regular update
+                elif (playtime_diff == 1800) or (playtime_diff > 1800 and last_playtime != 0):
                     if app_id in self.sessions_start_playtimes.keys():
                         self.sessions_start_playtimes[app_id][1] = current_timestamp
                     else:
