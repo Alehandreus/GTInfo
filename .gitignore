@@ -154,3 +154,4 @@ test.py
 testsend.py
 db_server/mymain.py
 doer/mymain.py
+telegram_notifier/mymain.py

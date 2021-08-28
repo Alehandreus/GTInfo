@@ -93,8 +93,7 @@ class Doer:
 
     # update from db server
     def check_updates(self):
-        sock = self.try_to_connect()
-        if not sock:
+        if not (sock := self.try_to_connect()):
             return
 
         try:
@@ -143,8 +142,7 @@ class Doer:
         if not self.data_to_send:
             return
 
-        sock = self.try_to_connect()
-        if not sock:
+        if not (sock := self.try_to_connect()):
             return
 
         req = {"command": "new_user_online_activity_objects", "user_online_activity_objects": self.data_to_send}

@@ -95,10 +95,10 @@ class PremiumUserManager:
             self.last_known_playtimes[app_id] = current_playtime
 
         # additional checks
-        # if last session update was more than 40 minutes ago, end it
+        # if last session update was more than 50 minutes ago, end it
         for app_id, values in self.sessions_start_playtimes.copy().items():
             start_playtime, last_check_timestamp = values[0], values[1]
-            if abs(current_timestamp - last_check_timestamp) > 40 * 60:  # 40 minutes
+            if abs(current_timestamp - last_check_timestamp) > 50 * 60:  # 50 minutes
                 total_playtime_diff = self.last_known_playtimes[app_id] - start_playtime
                 start_timestamp = last_check_timestamp - total_playtime_diff
 

@@ -2,24 +2,32 @@ import socket
 import json
 import requests
 from binary_functions import *
-from db_managers import PostgreSQLManager
 import threading
+from notifiers import SenderToTelegramNotifier
 
 
 class DBServer:
-    def __init__(self, doer_address, database_values, telegram_notifier):
+    def __init__(self, bind_address, db_manager, telegram_notifier_address=None):
         self.basic_users_ids = []
         self.premium_users_ids = []
-        self.db_manager = PostgreSQLManager(*database_values)
-        self.users_changed = True
-        self.DOER_ADDRESS = doer_address
-        self.telegram_notifier = telegram_notifier
-        self.telegram_notifier.set_current_db(self.db_manager)
+        self.db_manager = db_manager
 
+        self.BIND_ADDRESS = bind_address
+
+        self.sender_to_telegram_notifier = None
+        if telegram_notifier_address:
+            self.sender_to_telegram_notifier = SenderToTelegramNotifier(telegram_notifier_address)
+
+        self.users_changed = True
         self.is_working = True
 
         # updating users is not implemented
         # self.set_users()
+
+    # send data about user online activity objects to telegram address
+    def send_notification(self, data):
+        if self.sender_to_telegram_notifier:
+            self.sender_to_telegram_notifier.send_data(data)
 
     def start(self):
         print("DB server starting...")
@@ -30,16 +38,12 @@ class DBServer:
         console = threading.Thread(target=self.start_console)
         console.start()
 
-        telegram_notifier_thread = threading.Thread(target=self.start_telegram_notifier)
-        telegram_notifier_thread.start()
-
         socket_thread.join()
         console.join()
-        telegram_notifier_thread.join()
 
     def start_socket(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind(self.DOER_ADDRESS)
+        self.server_socket.bind(self.BIND_ADDRESS)
         self.server_socket.listen()
 
         print('Socket active')
@@ -57,12 +61,9 @@ class DBServer:
 
     def stop_socket(self):
         tempsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tempsocket.connect(("localhost", 8686))
+        tempsocket.connect(self.BIND_ADDRESS)
         send_msg(tempsocket, json.dumps({"command": "nocommand"}))
         self.server_socket.close()
-
-    def start_telegram_notifier(self):
-        self.telegram_notifier.bot_polling()
 
     def start_console(self):
         print("Console active. Type \"stop\" to stop")
@@ -71,8 +72,10 @@ class DBServer:
             if command == "stop":
                 print("Stopping execution...")
                 self.is_working = False
-                self.telegram_notifier.bot.stop_polling()
                 self.stop_socket()
+            if command == "backup":
+                self.db_manager.create_backup_csv()
+                print("csv backup created")
 
     def set_users(self):
         resp = requests.get("http://127.0.0.1:8000/iu_api/tracked_user_object/?format=json", auth=requests.auth.HTTPBasicAuth('admin', 'rockpassword'))
@@ -114,9 +117,9 @@ class DBServer:
 
     def serve_request_new_user_online_activity_objects(self, data):
         user_online_activity_objects = data["user_online_activity_objects"]
-        print(data)
+        self.send_notification(user_online_activity_objects)
+        print(user_online_activity_objects)
         for user_online_activity_object in user_online_activity_objects:
-            self.telegram_notifier.notify(user_online_activity_object)
             self.db_manager.add_play_interval(user_online_activity_object)
         return {}
 

@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import psycopg2
+import datetime as dt
 
 
 def create_file_if_not_exists(filepath):
@@ -80,6 +81,15 @@ class PostgreSQLManager:
         self.port = port
         self.db_name = db_name
         self.create_tables()
+
+    @with_postgre_cursor
+    def create_backup_csv(self, cursor):
+        s = "SELECT * FROM user_online_activity_objects"
+        query = f"COPY ({s}) TO STDOUT WITH CSV HEADER"
+        save_path = "" + f"{dt.datetime.utcnow()}.csv"
+
+        with open(save_path, 'w') as file:
+            cursor.copy_expert(query, file)
 
     @with_postgre_cursor
     def create_tables(self, cursor):

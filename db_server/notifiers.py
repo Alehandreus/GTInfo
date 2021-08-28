@@ -1,7 +1,9 @@
 import telebot
-import datetime as dt
-import requests
 from bs4 import BeautifulSoup
+import datetime as dt
+import socket
+import requests
+from binary_functions import *
 import json
 
 
@@ -131,3 +133,32 @@ class NameFinder:
             return None
         username = a.text
         return username
+
+
+class SenderToTelegramNotifier:
+    def __init__(self, telegram_notifier_address):
+        self.TELEGRAM_NOTIFIER_ADDRESS = telegram_notifier_address
+        self.telegram_notifier_operational = True
+        self.data_to_send = []
+
+    def send_data(self, data):
+        self.data_to_send += data
+        sock = socket.socket()
+        try:
+            # I'm in
+            sock.connect(self.TELEGRAM_NOTIFIER_ADDRESS)
+            if not self.telegram_notifier_operational:
+                print(f"Telegram notifier is operational since {dt.datetime.utcnow()} utc")
+            self.telegram_notifier_operational = True
+
+            req = {"command": "new_user_online_activity_objects", "user_online_activity_objects": self.data_to_send}
+            req_str = json.dumps(req)
+            send_msg(sock, req_str)
+            self.data_to_send = []
+            sock.close()
+
+        except ConnectionRefusedError:
+            # bruh, lets try another time
+            if self.telegram_notifier_operational:
+                print(f"Telegram notifier is not operational since {dt.datetime.utcnow()} utc")
+            self.telegram_notifier_operational = False
