@@ -7,12 +7,13 @@ from notifiers import SenderToTelegramNotifier
 
 
 class DBServer:
-    def __init__(self, bind_address, db_manager, telegram_notifier_address=None):
+    def __init__(self, bind_address, website_url, db_manager, telegram_notifier_address=None):
         self.basic_users_ids = []
         self.premium_users_ids = []
         self.db_manager = db_manager
 
         self.BIND_ADDRESS = bind_address
+        self.WEBSITE_URL = website_url
 
         self.sender_to_telegram_notifier = None
         if telegram_notifier_address:
@@ -21,8 +22,7 @@ class DBServer:
         self.users_changed = True
         self.is_working = True
 
-        # updating users is not implemented
-        # self.set_users()
+        self.set_users()
 
     # send data about user online activity objects to telegram address
     def send_notification(self, data):
@@ -78,14 +78,20 @@ class DBServer:
                 print("csv backup created")
 
     def set_users(self):
-        resp = requests.get("http://127.0.0.1:8000/iu_api/tracked_user_object/?format=json", auth=requests.auth.HTTPBasicAuth('admin', 'rockpassword'))
+        try:
+            resp = requests.get(f"{self.WEBSITE_URL}/iu_api/tracked_user_object/?format=json", auth=requests.auth.HTTPBasicAuth('admin', 'rockpassword'))
+        except Exception as ex:
+            print(f"Warning! Failed to get tracked users from {self.WEBSITE_URL}")
+            return
+
         resp = json.loads(resp.text)
         self.basic_users_ids = [el["steam_id"] for el in resp["results"]]
         while resp["next"]:
-            resp = requests.get("http://127.0.0.1:8000/iu_api/tracked_user_object/?format=json", auth=requests.auth.HTTPBasicAuth('admin', 'rockpassword'))
+            resp = requests.get(f"{self.WEBSITE_URL}/iu_api/tracked_user_object/?format=json", auth=requests.auth.HTTPBasicAuth('admin', 'rockpassword'))
             resp = json.loads(resp.text)
             self.basic_users_ids += [el["steam_id"] for el in resp["results"]]
-        self.premium_users_ids = []
+
+        self.premium_users_ids = []  # as far as i know, premium users api is not implemented yet
 
     def serve_request_full_settings(self, data=None):
         settings = {
