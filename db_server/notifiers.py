@@ -156,7 +156,6 @@ class SenderToTelegramNotifier:
             send_msg(sock, req_str)
             self.data_to_send = []
             sock.close()
-
         except ConnectionRefusedError:
             # bruh, lets try another time
             if self.telegram_notifier_operational:

@@ -30,7 +30,7 @@ class BasicUserManager:
             if self.last_game is not None:
                 resp = self.get_latest_games_function(self.user_id)
                 if resp != {}:
-                    total_played = resp["appid"] / 3600
+                    total_played = resp[last_game] / 3600
 
                     result_data = [{
                         "tracked_user": self.user_id,
@@ -117,12 +117,12 @@ class PremiumUserManager:
 
 class DataManager:
     def __init__(self, doer_class):
-        self.master = doer_class
-        self.basic_users_managers = {user_id: BasicUserManager(user_id, self.get_recent_playtimes) for user_id in self.master.basic_user_ids}
-        self.premium_users_managers = {user_id: PremiumUserManager(user_id, self.get_all_playtimes(user_id)) for user_id in self.master.premium_user_ids}
+        self.doer = doer_class
+        self.basic_users_managers = {user_id: BasicUserManager(user_id, self.get_recent_playtimes) for user_id in self.doer.basic_user_ids}
+        self.premium_users_managers = {user_id: PremiumUserManager(user_id, self.get_all_playtimes(user_id)) for user_id in self.doer.premium_user_ids}
 
     def get_recent_playtimes(self, user_id):
-        url = f"http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={self.master.steam_key}&steamid={user_id}&include_played_free_games=1"
+        url = f"http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={self.doer.steam_key}&steamid={user_id}&include_played_free_games=1"
         resp = requests.get(url)
 
         if resp.status_code != 200:
@@ -139,7 +139,7 @@ class DataManager:
         return {}
 
     def get_all_playtimes(self, user_id):
-        url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={self.master.steam_key}&steamid={user_id}&include_played_free_games=1"
+        url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key={self.doer.steam_key}&steamid={user_id}&include_played_free_games=1"
         resp = requests.get(url)
 
         if resp.status_code != 200:
@@ -147,17 +147,19 @@ class DataManager:
 
         try:
             resp = json.loads(resp.text)["response"]
-            if resp["game_count"] != 0:
+            
+            if (x := resp.get("game_count", None)) is not None and x != 0:
                 res = {game["appid"]: game["playtime_forever"] * 60 for game in resp["games"]}
                 return res | self.get_recent_playtimes(user_id)
         except KeyError:
+            print("Error: ")
             traceback.print_exc()
         return {}
 
     # delete old user managers, create new
     def update_user_ids(self, new_basic_user_ids, new_premium_user_ids):
         new_basic_user_ids, new_premium_user_ids = set(new_basic_user_ids), set(new_premium_user_ids)
-        old_basic_user_ids, old_premium_user_ids = set(self.master.basic_user_ids), set(self.master.premium_user_ids)
+        old_basic_user_ids, old_premium_user_ids = set(self.doer.basic_user_ids), set(self.doer.premium_user_ids)
 
         for removed_userid in old_basic_user_ids - new_basic_user_ids:
             del self.basic_users_managers[removed_userid]
@@ -171,14 +173,14 @@ class DataManager:
 
     def check_basic_users(self):
         result_data = []
-        basic_users_count = len(self.master.basic_user_ids)
+        basic_users_count = len(self.doer.basic_user_ids)
         urls = []
         for i in range(0, basic_users_count, 100):
             start = i
             end = i + 100 if i + 100 < basic_users_count else basic_users_count
 
-            users_range = ",".join([str(i) for i in self.master.basic_user_ids[start:end]])
-            new_url = f"http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={self.master.steam_key}&steamids={users_range}"
+            users_range = ",".join([str(i) for i in self.doer.basic_user_ids[start:end]])
+            new_url = f"http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key={self.doer.steam_key}&steamids={users_range}"
             urls.append(new_url)
         with FuturesSession() as session:
             futures = [session.get(url) for url in urls]
@@ -187,12 +189,13 @@ class DataManager:
                 if response.status_code == 200:
                     response = json.loads(response.text)
                     for player in response["response"]["players"]:
-                        result_data += self.basic_users_managers[int(player["steamid"])].analyze_data(player, dt.datetime.utcnow().timestamp())
+                        if basic_users_manager := self.basic_users_managers.get(int(player["steamid"]), None):
+                            result_data += basic_users_manager.analyze_data(player, dt.datetime.utcnow().timestamp())
         return result_data
 
     def check_premium_users(self):
         url_template = "http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={}&steamid={}&include_played_free_games=1"
-        urls = [url_template.format(self.master.steam_key, user_id) for user_id in self.master.premium_user_ids]
+        urls = [url_template.format(self.doer.steam_key, user_id) for user_id in self.doer.premium_user_ids]
         result_data = []
         with FuturesSession() as session:
             futures = [session.get(url) for url in urls]
@@ -216,7 +219,8 @@ class DataManager:
                     continue  # response is empty, steam bug perhaps
 
                 # finally
-                result_data += self.premium_users_managers[steam_id].analyze_data(response["games"], dt.datetime.utcnow().timestamp())
+                if premium_user_manager := self.premium_users_managers.get(steam_id, None):
+                    result_data += premium_user_manager.analyze_data(response["games"], dt.datetime.utcnow().timestamp())
         return result_data
 
     @staticmethod
