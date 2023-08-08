@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  db_server:
+    build: ./db_server
+    restart: always
+    env_file:
+      - ./db_server/.env
+    ports:
+      - "9101:8000"
+    depends_on:
+      - db
+    stdin_open: true
+    tty: true
+  db:
+    image: postgres:13.0-alpine
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - ./db/.env
+    ports:
+      - "9102:5432"
+  tg_notifier:
+    build: ./tg_notifier
+    restart: always
+    env_file:
+      - ./tg_notifier/.env
+    ports:
+      - "9103:8000"
+    stdin_open: true
+    tty: true
+  doer:
+    build: ./doer
+    restart: always
+    env_file:
+      - ./doer/.env
+    ports:
+      - "9104:80"
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:

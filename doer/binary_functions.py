@@ -1,5 +1,7 @@
 # some stuff related to reading socket data
+# https://stackoverflow.com/a/17668009
 import struct
+import socket
 
 
 def send_msg(sock, msg):
@@ -10,13 +12,18 @@ def send_msg(sock, msg):
 
 
 def recv_msg(sock):
-    # Read message length and unpack it into an integer
-    raw_msglen = recvall(sock, 4)
-    if not raw_msglen:
+    try:
+        # Read message length and unpack it into an integer
+        raw_msglen = recvall(sock, 4)
+        if not raw_msglen:
+            return None
+        msglen = struct.unpack('>I', raw_msglen)[0]
+        # Read the message data
+        return recvall(sock, msglen)
+    except socket.timeout:
         return None
-    msglen = struct.unpack('>I', raw_msglen)[0]
-    # Read the message data
-    return recvall(sock, msglen)
+    except ConnectionResetError:
+        return None
 
 
 def recvall(sock, n):

@@ -7,6 +7,7 @@ from binary_functions import *
 from managers import DataManager
 import threading
 from enum import Enum, auto
+from gtinfo_requests import GTInfoResponseTypes, GTInfoRequestTypes, make_request, read_request
 
 
 class UserTiers(Enum):
@@ -22,7 +23,7 @@ class LastRunTimestamps:
 
 
 @dataclass
-class Settings:
+class DoerSettings:
     basic_freq: int
     premium_freq: int
     update_freq: int
@@ -55,7 +56,7 @@ class Doer:
         self.db_operational = True  # db is anyway checked during setup
         self.db_server_address = db_server_address
         self.steam_key = steam_key
-        self.settings = Settings(5, 5, 5)
+        self.settings = DoerSettings(5, 5, 5)
         self.basic_user_ids = []
         self.premium_user_ids = []
         self.data_manager = DataManager(self)
@@ -64,23 +65,37 @@ class Doer:
 
         self.is_working = True
 
-    # returns socket if db server operational, else False
+    # returns socket if db server operational, else None
     def try_to_connect(self):
         sock = socket.socket()
+        sock.settimeout(5)
         try:
             sock.connect(self.db_server_address)
             if not self.db_operational:
                 print(f"DB is operational since {dt.datetime.utcnow()} utc")
-            self.db_operational = True
+                self.db_operational = True
             return sock
-        except ConnectionRefusedError:
+        except (ConnectionRefusedError, socket.timeout, OSError) as ex:
             if self.db_operational:
-                print(f"DB is not operational since {dt.datetime.utcnow()} utc")
-            self.db_operational = False
-            return False
+                print(f"DB is not operational since {dt.datetime.utcnow()} utc ({ex})")
+                self.db_operational = False
+
+    def send_request(self, request):
+        if not (sock := self.try_to_connect()):
+            return make_request(GTInfoResponseTypes.no_connection, 0)
+        send_msg(sock, json.dumps(request))
+        if not (response := recv_msg(sock)):
+            return make_request(GTInfoResponseTypes.no_response, 0)
+        sock.close()
+        response = json.loads(response)
+        return response
+
+    def quick_request(self, request_type, data):
+        return read_request(self.send_request(make_request(request_type, data)))
 
     # update users list
     def apply_users(self, new_basic_user_ids, new_premium_user_ids):
+        print(f"Applied {new_basic_user_ids}, {new_premium_user_ids} users")
         self.data_manager.update_user_ids(new_basic_user_ids, new_premium_user_ids)
         self.basic_user_ids = new_basic_user_ids
         self.premium_user_ids = new_premium_user_ids
@@ -93,63 +108,30 @@ class Doer:
 
     # update from db server
     def check_updates(self):
-        if not (sock := self.try_to_connect()):
-            return
+        response_code, response_data = self.quick_request(GTInfoRequestTypes.doer_settings, 0)
+        if response_code == GTInfoResponseTypes.ok:
+            self.apply_settings(response_data)
 
-        try:
-
-            # if first time
-            if not self.is_set_up:
-                # setting up
-                req_str = json.dumps({"command": "full_settings"})
-                send_msg(sock, req_str)
-                response = json.loads(recv_msg(sock))
-                self.apply_settings(response["data"])
-                sock.close()
-
-                sock = socket.socket()
-                sock.connect(self.db_server_address)
-                req_str = json.dumps({"command": "full_users"})
-                send_msg(sock, req_str)
-                response = json.loads(recv_msg(sock))
-                self.apply_users(response["data"]["basic_user_ids"], response["data"]["premium_user_ids"])
-                sock.close()
-
+        if not self.is_set_up:  # all users
+            response_code, response_data = self.quick_request(GTInfoRequestTypes.doer_users, 0)
+            if response_code == GTInfoResponseTypes.ok:
+                self.apply_users(response_data["basic_user_ids"], response_data["premium_user_ids"])
                 self.is_set_up = True
-            else:
-                # updating settings
-                req_str = json.dumps({"command": "full_settings"})
-                send_msg(sock, req_str)
-                response = json.loads(recv_msg(sock))
-                self.apply_settings(response["data"])
-                sock.close()
-
-                # updating users
-                sock = socket.socket()
-                sock.connect(self.db_server_address)
-                req_str = json.dumps({"command": "users_if_changed"})
-                send_msg(sock, req_str)
-                response = json.loads(recv_msg(sock))
-                sock.close()
-                if response["changed"]:
-                    self.apply_users(response["data"]["basic_user_ids"], response["data"]["premium_user_ids"])
-
-        except socket.error as e:
-            print(f"Socket error occurred: {e}")
+        else:  # all users if changed
+            response_code, response_data = self.quick_request(GTInfoRequestTypes.doer_users_if_changed, 0)
+            if response_code == GTInfoResponseTypes.ok:
+                if response_data["changed"]:
+                    self.apply_users(response_data["basic_user_ids"], response_data["premium_user_ids"])
 
     # send user activity objects to db server if there any
     def send_data_to_send(self):
         if not self.data_to_send:
             return
 
-        if not (sock := self.try_to_connect()):
-            return
-
-        req = {"command": "new_user_online_activity_objects", "user_online_activity_objects": self.data_to_send}
-        req_str = json.dumps(req)
-        send_msg(sock, req_str)
-        self.data_to_send = []
-        sock.close()
+        data = {"user_online_activity_objects": self.data_to_send}
+        response_code, response_data = self.quick_request(GTInfoRequestTypes.doer_new_user_online_activity_object, data)
+        if response_code == GTInfoResponseTypes.ok:
+            self.data_to_send = []
 
     # ask data manager for users and send data to db server
     @time_check
@@ -165,12 +147,9 @@ class Doer:
         self.send_data_to_send()
 
     def start(self):
-        print("Doer starting...")
-        data_collection = threading.Thread(target=self.start_data_collection)
-        data_collection.start()
-
-        console = threading.Thread(target=self.start_console)
-        console.start()
+        print("Doer starting... (1)")
+        (data_collection := threading.Thread(target=self.start_data_collection)).start()
+        (console := threading.Thread(target=self.start_console)).start()
 
         data_collection.join()
         console.join()
