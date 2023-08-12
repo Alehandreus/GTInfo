@@ -3,11 +3,11 @@ import datetime as dt
 import socket
 from time import sleep
 from dataclasses import dataclass
-from binary_functions import *
 from managers import DataManager
 import threading
 from enum import Enum, auto
-from gtinfo_requests import GTInfoResponseTypes, GTInfoRequestTypes, make_request, read_request
+from gtinfo_requests import *
+from binary_functions import *
 
 
 class UserTiers(Enum):

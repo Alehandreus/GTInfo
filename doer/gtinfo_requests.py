@@ -8,6 +8,10 @@ class GTInfoRequestTypes(int, Enum):
     doer_new_user_online_activity_object = auto()
     db_server_users = auto()
     web_user_online_activity_objects = auto()
+    web_users_with_data = auto()
+    web_games_with_data = auto()
+    most_played_users = auto()
+    most_played_games = auto()
     incorrect = auto()
 
 
@@ -30,5 +34,5 @@ def make_request(request_type, data):
 
 def read_request(request):
     if "type" not in request.keys() or "data" not in request.keys():
-        return GTInfoResponseTypes.incorrect, 0
+        return GTInfoResponseTypes.incorrect, []
     return request["type"], request["data"]

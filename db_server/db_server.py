@@ -8,8 +8,9 @@ import os
 from dataclasses import dataclass, asdict
 import datetime as dt
 from time import sleep
-from gtinfo_requests import DBManagerResponseTypes, GTInfoResponseTypes, GTInfoRequestTypes, make_request, read_request
+from gtinfo_requests import *
 import re
+from collections import defaultdict
 
 
 @dataclass
@@ -214,6 +215,8 @@ class RequestServant:
             GTInfoRequestTypes.web_user_online_activity_objects: self.web_user_online_activity_objects,
             GTInfoRequestTypes.web_users_with_data: self.web_users_with_data,
             GTInfoRequestTypes.web_games_with_data: self.web_games_with_data,
+            GTInfoRequestTypes.most_played_users: self.most_played_users,
+            GTInfoRequestTypes.most_played_games: self.most_played_games,
         }
 
     def serve_request(self, request_type, request_data):
@@ -254,11 +257,23 @@ class RequestServant:
         return make_request(GTInfoResponseTypes.ok, 0)
 
     def web_user_online_activity_objects(self, request_data):
-        request_data["tracked_users"] = request_data.get("tracked_users", None)
-        request_data["game_ids"] = request_data.get("game_ids", None)
-        request_data["start_timestamp"] = request_data.get("start_timestamp", None)
-        request_data["end_timestamp"] = request_data.get("end_timestamp", None)
         db_manager_response = self.db_server.db_manager.get_user_online_activity_objects(request_data)
+        response_code, response_data = read_request(db_manager_response)
+        if response_code != DBManagerResponseTypes.ok:
+            return make_request(GTInfoResponseTypes.error, 0)
+        return make_request(GTInfoResponseTypes.ok, response_data)
+
+    def most_played_users(self, request_data):
+        # ["start_timestamp": 1, "end_timestamp": 2, "tracked_users": [1, 2, 3], "limit": 10]
+        db_manager_response = self.db_server.db_manager.get_most_played_users(request_data)
+        response_code, response_data = read_request(db_manager_response)
+        if response_code != DBManagerResponseTypes.ok:
+            return make_request(GTInfoResponseTypes.error, 0)
+        return make_request(GTInfoResponseTypes.ok, response_data)
+
+    def most_played_games(self, request_data):
+        # ["start_timestamp": 1, "end_timestamp": 2, "tracked_users": [1, 2, 3], "limit": 10]
+        db_manager_response = self.db_server.db_manager.get_most_played_games(request_data)
         response_code, response_data = read_request(db_manager_response)
         if response_code != DBManagerResponseTypes.ok:
             return make_request(GTInfoResponseTypes.error, 0)

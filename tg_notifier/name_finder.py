@@ -6,37 +6,23 @@ import json
 
 class NameFinder:
     def __init__(self):
-        self.all_appnames = None
+        self.appnames = dict()
+        self.appnames_update = 0
 
-    @staticmethod
-    def get_all_appnames():
-        try:
-            resp = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/")
-            resp = json.loads(resp.text)
-            return {game["appid"]: game["name"] for game in resp["applist"]["apps"]}
-        except Exception as e:
-            print(f"Failed to get all appnames list: {e}")
-        return None
+        self.usernames = dict()
+        self.usernames_update = 0
 
     def get_appname(self, appid):
-        appname = self.parse_appname(appid)
-        if appname is not None:
-            return appname
-
         current_timestamp = dt.datetime.utcnow().timestamp()
-        if self.last_update is None or \
-                self.all_appnames is None or \
-                current_timestamp - self.last_update >= 86400:  # update every 24 hours
+        if current_timestamp - self.appnames_update >= 24 * 60 * 60:
+            self.update_appnames()
+            self.appnames_update = current_timestamp
 
-            new_all_appnames = self.get_all_appnames()
-            if new_all_appnames is not None:
-                self.all_appnames = new_all_appnames
-                self.last_update = current_timestamp
-
-        if self.all_appnames is None:
-            return f"unknown game {appid}"
-
-        return self.all_appnames.get(appid, f"unknown game {appid}")
+        if (appname := self.appnames.get(appid, None)) is None:
+            if (appname := self.parse_appname(appid)) is None:
+                return f"unknown game {appid}"
+            self.appnames[appid] = appname
+        return appname
 
     @staticmethod
     def parse_appname(gameid):
@@ -51,8 +37,28 @@ class NameFinder:
         game_name = a.text
         return game_name
 
+    def update_appnames(self):
+        try:
+            resp = requests.get("https://api.steampowered.com/ISteamApps/GetAppList/v2/")
+            resp = json.loads(resp.text)
+            self.appnames = {game["appid"]: game["name"] for game in resp["applist"]["apps"]}
+        except Exception as e:
+            print(f"Failed to get all appnames list: {e}")
+
+    def get_username(self, steamid):
+        current_timestamp = dt.datetime.utcnow().timestamp()
+        if current_timestamp - self.usernames_update >= 24 * 60 * 60:
+            self.update_usernames()
+            self.usernames_update = current_timestamp
+
+        if (username := self.usernames.get(steamid, None)) is None:
+            if (username := self.parse_username(steamid)) is None:
+                return f"unknown user {steamid}"
+            self.usernames[steamid] = username
+        return username
+
     @staticmethod
-    def get_username(steamid):
+    def parse_username(steamid):
         url = "https://steamcommunity.com/profiles/" + str(steamid)
         getresponse = requests.get(url)
         if getresponse.status_code != 200:
@@ -63,3 +69,8 @@ class NameFinder:
             return None
         username = a.text
         return username
+
+    def update_usernames(self):
+        for steamid, username in self.usernames.items():
+            if (new_username := self.parse_username(steamid)) is not None and new_username != username:
+                self.usernames[steamid] = new_username

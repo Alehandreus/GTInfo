@@ -93,13 +93,13 @@ class DBManager(ABC):
     def get_user_online_activity_objects(self, data, cursor):
         true_request = "1=1"
 
-        start_timestamp = data["start_timestamp"]
+        start_timestamp = data.get("start_timestamp", None)
         start_timestamp_request = f"started_playing_timestamp >= {start_timestamp}" if start_timestamp else true_request
 
-        end_timestamp = data["end_timestamp"]
+        end_timestamp = data.get("end_timestamp", None)
         end_timestamp_request = f"ended_playing_timestamp <= {end_timestamp}" if end_timestamp else true_request
 
-        tracked_users = data["tracked_users"]
+        tracked_users = data.get("tracked_users", None)
         tracked_users_request = true_request
         if tracked_users == []:
             return []
@@ -108,7 +108,7 @@ class DBManager(ABC):
             tracked_users_str = "(" + ", ".join(tracked_users) + ")"
             tracked_users_request = f"tracked_user in {tracked_users_str}"
 
-        game_ids = data["game_ids"]
+        game_ids = data.get("game_ids", None)
         game_ids_request = true_request
         if game_ids == []:
             return []
@@ -120,6 +120,70 @@ class DBManager(ABC):
         request = f"SELECT * FROM user_online_activity_objects WHERE \
             {start_timestamp_request} AND {end_timestamp_request} AND \
             {tracked_users_request} AND {game_ids_request};"
+        cursor.execute(request)
+        return cursor.fetchall()
+
+    @with_cursor
+    def get_most_played_users(self, data, cursor):
+        true_request = "1=1"
+
+        start_timestamp = data.get("start_timestamp", None)
+        start_timestamp_request = f"started_playing_timestamp >= {start_timestamp}" if start_timestamp else true_request
+
+        end_timestamp = data.get("end_timestamp", None)
+        end_timestamp_request = f"ended_playing_timestamp <= {end_timestamp}" if end_timestamp else true_request
+
+        tracked_users = data.get("tracked_users", None)
+        tracked_users_request = true_request
+        if tracked_users == []:
+            return []
+        if tracked_users:
+            tracked_users = [str(x) for x in tracked_users]
+            tracked_users_str = "(" + ", ".join(tracked_users) + ")"
+            tracked_users_request = f"tracked_user in {tracked_users_str}"
+
+        limit = data.get("limit", None)
+        limit_str = f"LIMIT {limit}" if limit else ""
+
+        request = f"SELECT tracked_user, \
+                    CAST(SUM(ended_playing_timestamp - started_playing_timestamp) AS BIGINT) AS total_played \
+                    FROM user_online_activity_objects \
+                    WHERE {start_timestamp_request} AND {end_timestamp_request} AND {tracked_users_request} \
+                    GROUP BY tracked_user \
+                    ORDER BY total_played desc \
+                    {limit_str};"
+        cursor.execute(request)
+        return cursor.fetchall()
+
+    @with_cursor
+    def get_most_played_games(self, data, cursor):
+        true_request = "1=1"
+
+        start_timestamp = data.get("start_timestamp", None)
+        start_timestamp_request = f"started_playing_timestamp >= {start_timestamp}" if start_timestamp else true_request
+
+        end_timestamp = data.get("end_timestamp", None)
+        end_timestamp_request = f"ended_playing_timestamp <= {end_timestamp}" if end_timestamp else true_request
+
+        tracked_users = data.get("tracked_users", None)
+        tracked_users_request = true_request
+        if tracked_users == []:
+            return []
+        if tracked_users:
+            tracked_users = [str(x) for x in tracked_users]
+            tracked_users_str = "(" + ", ".join(tracked_users) + ")"
+            tracked_users_request = f"tracked_user in {tracked_users_str}"
+
+        limit = data.get("limit", None)
+        limit_str = f"LIMIT {limit}" if limit else ""
+
+        request = f"SELECT game_id, \
+                    CAST(SUM(ended_playing_timestamp - started_playing_timestamp) AS BIGINT) AS total_played \
+                    FROM user_online_activity_objects \
+                    WHERE {start_timestamp_request} AND {end_timestamp_request} AND {tracked_users_request} \
+                    GROUP BY game_id \
+                    ORDER BY total_played desc \
+                    {limit_str};"
         cursor.execute(request)
         return cursor.fetchall()
 
