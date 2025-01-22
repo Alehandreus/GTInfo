@@ -197,30 +197,31 @@ class DataManager:
         url_template = "http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={}&steamid={}&include_played_free_games=1"
         urls = [url_template.format(self.doer.steam_key, user_id) for user_id in self.doer.premium_user_ids]
         result_data = []
-        with FuturesSession() as session:
-            futures = [session.get(url) for url in urls]
-            for future in as_completed(futures):
-                if not (future._result):  # wut
-                    continue
 
-                # responses come in random order so we have to somehow get steam id from this result
-                steam_id = self.extract_steamid_from_url(future._result.url)  # see below
-                response = future.result()
+        try:
+            for steam_id, url in zip(self.doer.premium_user_ids, urls):
+                response = requests.get(url)
 
                 if not (response.status_code == 200):  # first response check
+                    print(response.status_code)
                     continue
 
                 try:  # trying to parse to dict
                     response = json.loads(response.text)["response"]
                 except json.decoder.JSONDecodeError as ex:  # probably request futures messed up
+                    print(2)
                     continue
 
                 if not ("games" in response.keys()):  # check if response is not empty
+                    print(list(response.keys()), response)
                     continue  # response is empty, steam bug perhaps
 
                 # finally
                 if premium_user_manager := self.premium_users_managers.get(steam_id, None):
                     result_data += premium_user_manager.analyze_data(response["games"], dt.datetime.utcnow().timestamp())
+        except requests.exceptions.ConnectionError as ex:
+            print("ERROR:", ex)
+
         return result_data
 
     @staticmethod
